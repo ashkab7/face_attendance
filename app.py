@@ -28,7 +28,7 @@ def admin_login_page():
         if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
             st.session_state.admin_logged_in = True
             st.success("Login Successful!")
-            st.experimental_rerun()
+            st.rerun()     # <-- FIXED
         else:
             st.error("Invalid username or password")
 
@@ -116,11 +116,13 @@ elif choice == "Admin Panel":
 
             if st.button("Logout"):
                 st.session_state.admin_logged_in = False
-                st.experimental_rerun()
+                st.rerun()
+
 
         else:
             st.warning("No attendance found for today.")
 
             if st.button("Logout"):
                 st.session_state.admin_logged_in = False
-                st.experimental_rerun()
+                st.rerun()
+
