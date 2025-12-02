@@ -13,20 +13,25 @@ from datetime import datetime
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "12345"
 
-# Session state for admin login
+# ---------------------------------
+# SESSION STATE VARIABLES
+# ---------------------------------
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 
-# Keep camera running between reruns
 if "camera_on" not in st.session_state:
     st.session_state.camera_on = False
 
-# Keep track if attendance was marked
 if "attendance_marked" not in st.session_state:
     st.session_state.attendance_marked = False
 
+if "end_camera" not in st.session_state:
+    st.session_state.end_camera = False
 
-# Admin login page function
+
+# ---------------------------------
+# ADMIN LOGIN PAGE
+# ---------------------------------
 def admin_login_page():
     st.title("🔐 Admin Login")
 
@@ -42,9 +47,9 @@ def admin_login_page():
             st.error("Invalid username or password")
 
 
-# -------------------------------
+# ---------------------------------
 # MAIN UI
-# -------------------------------
+# ---------------------------------
 st.set_page_config(page_title="Face Attendance System", layout="wide")
 
 st.title("📸 Face Recognition Attendance System")
@@ -52,9 +57,16 @@ st.title("📸 Face Recognition Attendance System")
 menu = ["Register User", "Mark Attendance", "Admin Panel"]
 choice = st.sidebar.selectbox("Menu", menu)
 
-# -------------------------------------------
+# Update camera end flag
+if choice != "Mark Attendance":
+    st.session_state.end_camera = True
+else:
+    st.session_state.end_camera = False
+
+
+# ----------------------------------------------------
 # 1. REGISTER USER
-# -------------------------------------------
+# ----------------------------------------------------
 if choice == "Register User":
     st.header("🧑 Register New User")
     name = st.text_input("Enter Name")
@@ -68,39 +80,42 @@ if choice == "Register User":
         else:
             st.error("❌ No face detected. Try again.")
 
-# -------------------------------------------
-# 2. MARK ATTENDANCE
-# -------------------------------------------
+
+# ----------------------------------------------------
+# 2. MARK ATTENDANCE (FAST & SMOOTH VIDEO)
+# ----------------------------------------------------
 elif choice == "Mark Attendance":
     st.header("✔ Mark Attendance (Live Camera)")
 
     start_button = st.button("Start Camera")
     mark_button = st.button("Mark Attendance")
 
+    FRAME = st.empty()
+
     if start_button:
         st.session_state.camera_on = True
         st.session_state.attendance_marked = False
         st.rerun()
 
-    FRAME = st.empty()
-
     if st.session_state.camera_on:
         cap = cv2.VideoCapture(0)
-        while st.session_state.camera_on:
-            ret, frame = cap.read()
 
+        while True:
+
+            # Stop if user navigates away
+            if st.session_state.end_camera:
+                break
+
+            ret, frame = cap.read()
             if not ret or frame is None:
                 continue
 
             frame = cv2.flip(frame, 1)
 
-            # Recognize + bounding box
             frame, name_detected, box = recognize_face(frame)
 
-            # Display video
             FRAME.image(frame, channels="BGR")
 
-            # If user clicked Mark Attendance (without killing the video)
             if mark_button and not st.session_state.attendance_marked:
                 if name_detected not in ["Unknown", "No Users Registered"]:
                     mark_attendance(name_detected)
@@ -109,19 +124,17 @@ elif choice == "Mark Attendance":
                 else:
                     st.error("Face Not Recognized!")
 
-            # Stop loop if user switches page
-            if st.sidebar.selectbox("Menu", menu) != "Mark Attendance":
-                break
-
         cap.release()
 
 
-# -------------------------------------------
-# 3. ADMIN PANEL (Login Protected)
-# -------------------------------------------
+# ----------------------------------------------------
+# 3. ADMIN PANEL (LOGIN PROTECTED)
+# ----------------------------------------------------
 elif choice == "Admin Panel":
+
     if not st.session_state.admin_logged_in:
         admin_login_page()
+
     else:
         st.header("📊 Daily Attendance Report")
 
@@ -131,14 +144,9 @@ elif choice == "Admin Panel":
         if os.path.exists(file_path):
             df = pd.read_csv(file_path)
             st.dataframe(df)
-
-            if st.button("Logout"):
-                st.session_state.admin_logged_in = False
-                st.rerun()
-
         else:
             st.warning("No attendance found for today.")
 
-            if st.button("Logout"):
-                st.session_state.admin_logged_in = False
-                st.rerun()
+        if st.button("Logout"):
+            st.session_state.admin_logged_in = False
+            st.rerun()
