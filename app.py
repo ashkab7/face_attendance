@@ -1,7 +1,7 @@
 import streamlit as st
 import cv2
 import numpy as np
-from utils import register_user, recognize_face, mark_attendance, MODEL_NAME
+from utils import register_user, recognize_face, mark_attendance
 import pandas as pd
 import time
 import os
@@ -17,6 +17,15 @@ ADMIN_PASSWORD = "12345"
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 
+# Keep camera running between reruns
+if "camera_on" not in st.session_state:
+    st.session_state.camera_on = False
+
+# Keep track if attendance was marked
+if "attendance_marked" not in st.session_state:
+    st.session_state.attendance_marked = False
+
+
 # Admin login page function
 def admin_login_page():
     st.title("🔐 Admin Login")
@@ -28,7 +37,7 @@ def admin_login_page():
         if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
             st.session_state.admin_logged_in = True
             st.success("Login Successful!")
-            st.rerun()     # <-- FIXED
+            st.rerun()
         else:
             st.error("Invalid username or password")
 
@@ -39,15 +48,12 @@ def admin_login_page():
 st.set_page_config(page_title="Face Attendance System", layout="wide")
 
 st.title("📸 Face Recognition Attendance System")
-st.write(f"**Model Used:** {MODEL_NAME}")
-st.write("**Estimated Accuracy:** ~95% (good lighting)")
-
 
 menu = ["Register User", "Mark Attendance", "Admin Panel"]
 choice = st.sidebar.selectbox("Menu", menu)
 
 # -------------------------------------------
-# 1. Register User
+# 1. REGISTER USER
 # -------------------------------------------
 if choice == "Register User":
     st.header("🧑 Register New User")
@@ -63,40 +69,52 @@ if choice == "Register User":
             st.error("❌ No face detected. Try again.")
 
 # -------------------------------------------
-# 2. Mark Attendance
+# 2. MARK ATTENDANCE
 # -------------------------------------------
 elif choice == "Mark Attendance":
     st.header("✔ Mark Attendance (Live Camera)")
 
-    FRAME = st.image([])
-    cap = cv2.VideoCapture(0)
-
+    start_button = st.button("Start Camera")
     mark_button = st.button("Mark Attendance")
-    name_detected = "None"
 
-    while True:
-        ret, frame = cap.read()
+    if start_button:
+        st.session_state.camera_on = True
+        st.session_state.attendance_marked = False
+        st.rerun()
 
-        # SAFETY CHECK → prevents webcam crashes
-        if not ret or frame is None:
-            continue  
+    FRAME = st.empty()
 
-        frame = cv2.flip(frame, 1)
+    if st.session_state.camera_on:
+        cap = cv2.VideoCapture(0)
+        while st.session_state.camera_on:
+            ret, frame = cap.read()
 
-        frame, name_detected, box = recognize_face(frame)
+            if not ret or frame is None:
+                continue
 
-        FRAME.image(frame, channels="BGR")
+            frame = cv2.flip(frame, 1)
 
-        if mark_button:
-            if name_detected not in ["Unknown", "No Users Registered"]:
-                mark_attendance(name_detected)
-                st.success(f"Attendance Marked for **{name_detected}**!")
-                time.sleep(2)
+            # Recognize + bounding box
+            frame, name_detected, box = recognize_face(frame)
+
+            # Display video
+            FRAME.image(frame, channels="BGR")
+
+            # If user clicked Mark Attendance (without killing the video)
+            if mark_button and not st.session_state.attendance_marked:
+                if name_detected not in ["Unknown", "No Users Registered"]:
+                    mark_attendance(name_detected)
+                    st.success(f"Attendance Marked for {name_detected}")
+                    st.session_state.attendance_marked = True
+                else:
+                    st.error("Face Not Recognized!")
+
+            # Stop loop if user switches page
+            if st.sidebar.selectbox("Menu", menu) != "Mark Attendance":
                 break
-            else:
-                st.error("❌ Face not recognized!")
 
-    cap.release()
+        cap.release()
+
 
 # -------------------------------------------
 # 3. ADMIN PANEL (Login Protected)
@@ -118,11 +136,9 @@ elif choice == "Admin Panel":
                 st.session_state.admin_logged_in = False
                 st.rerun()
 
-
         else:
             st.warning("No attendance found for today.")
 
             if st.button("Logout"):
                 st.session_state.admin_logged_in = False
                 st.rerun()
-
