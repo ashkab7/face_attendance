@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/script.js" defer></script>
+</head>
+<body>
+
+<h2>Admin Dashboard</h2>
+
+<h3>Registered Users:</h3>
+
+<ul>
+{% for user in users %}
+    <li>
+        {{ user }}
+        <button class="delete-btn" onclick="deleteUser('{{ user }}')">Delete</button>
+    </li>
+{% endfor %}
+</ul>
+
+<button class="retrain-btn" onclick="retrainModel()">Retrain Model</button>
+<p id="adminStatus"></p>
+
+<br>
+<a href="/">Back</a>
+
+</body>
+</html>
