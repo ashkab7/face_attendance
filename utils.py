@@ -1,108 +1,117 @@
 import face_recognition
 import os
 import pickle
-import numpy as np
 import cv2
+import numpy as np
 import pandas as pd
 from datetime import datetime
-import winsound  # Sound alert
+import shutil
 
 ENCODING_FILE = "data/encodings.pkl"
 IMAGE_DIR = "data/user_images/"
-ATTENDANCE_DIR = "Attendance/"
-MODEL_NAME = "face_recognition (HOG/CNN)"
+ATT_DIR = "Attendance/"
 
-# --------------------------------------
-# SAFE LOAD ENCODINGS
-# --------------------------------------
+THRESHOLD = 0.45
+
+def ensure_dirs():
+    os.makedirs("data", exist_ok=True)
+    os.makedirs(IMAGE_DIR, exist_ok=True)
+    os.makedirs(ATT_DIR, exist_ok=True)
+
+ensure_dirs()
+
 def load_encodings():
-    if not os.path.exists("data"):
-        os.makedirs("data")
-    if not os.path.exists(IMAGE_DIR):
-        os.makedirs(IMAGE_DIR)
-    if not os.path.exists(ATTENDANCE_DIR):
-        os.makedirs(ATTENDANCE_DIR)
-
-    if os.path.exists(ENCODING_FILE) and os.path.getsize(ENCODING_FILE) > 0:
+    if os.path.exists(ENCODING_FILE):
         try:
             with open(ENCODING_FILE, "rb") as f:
                 return pickle.load(f)
         except:
             pass
-
     return {"encodings": [], "names": []}
 
-# --------------------------------------
-# SAVE ENCODINGS
-# --------------------------------------
 def save_encodings(data):
     with open(ENCODING_FILE, "wb") as f:
         pickle.dump(data, f)
 
-# --------------------------------------
-# REGISTER USER
-# --------------------------------------
-def register_user(name, img):
-    img_path = f"{IMAGE_DIR}/{name}.jpg"
-    cv2.imwrite(img_path, img)
+def retrain():
+    encodings = []
+    names = []
 
-    encodings = face_recognition.face_encodings(img)
-    if len(encodings) == 0:
-        return False
+    for user in os.listdir(IMAGE_DIR):
+        folder = os.path.join(IMAGE_DIR, user)
+        for img_name in os.listdir(folder):
+            img_path = os.path.join(folder, img_name)
+            img = cv2.imread(img_path)
+            if img is None:
+                continue
 
-    enc = encodings[0]
-    data = load_encodings()
-    data["encodings"].append(enc)
-    data["names"].append(name)
-    save_encodings(data)
+            rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            boxes = face_recognition.face_locations(rgb, model="hog")
+            face_enc = face_recognition.face_encodings(rgb, boxes)
+
+            if len(face_enc) > 0:
+                encodings.append(face_enc[0])
+                names.append(user)
+
+    save_encodings({"encodings": encodings, "names": names})
     return True
 
-# --------------------------------------
-# RECOGNIZE FACE + BOUNDING BOXES
-# --------------------------------------
+def register_user(name, img):
+    user_folder = os.path.join(IMAGE_DIR, name)
+    os.makedirs(user_folder, exist_ok=True)
+
+    count = len(os.listdir(user_folder)) + 1
+    img_path = f"{user_folder}/img_{count}.jpg"
+
+    cv2.imwrite(img_path, img)
+
+    retrain()
+    return True
+
+def delete_user(name):
+    folder = os.path.join(IMAGE_DIR, name)
+    if os.path.exists(folder):
+        shutil.rmtree(folder)
+        retrain()
+        return True
+    return False
+
 def recognize_face(frame):
     data = load_encodings()
     encs = data["encodings"]
     names = data["names"]
 
+    if len(encs) == 0:
+        return frame, "NO USERS", None
+
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    boxes = face_recognition.face_locations(rgb)
+    boxes = face_recognition.face_locations(rgb, model="hog")
     encodings = face_recognition.face_encodings(rgb, boxes)
 
-    if len(encs) == 0:
-        return frame, "No Users Registered", None
+    best_match = "Unknown"
 
-    for (top, right, bottom, left), enc in zip(boxes, encodings):
-        matches = face_recognition.compare_faces(encs, enc)
-        name = "Unknown"
+    for encode in encodings:
+        distances = face_recognition.face_distance(encs, encode)
+        idx = np.argmin(distances)
 
-        if True in matches:
-            idx = matches.index(True)
-            name = names[idx]
+        if distances[idx] < THRESHOLD:
+            best_match = names[idx]
 
-        # Draw bounding box
-        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-        cv2.putText(frame, name, (left, top - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    for (top, right, bottom, left) in boxes:
+        cv2.rectangle(frame, (left, top), (right, bottom), (0,255,0), 2)
+        cv2.putText(frame, best_match, (left, top - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
 
-        return frame, name, boxes
+    return frame, best_match, boxes
 
-    return frame, "Unknown", None
-
-# --------------------------------------
-# MARK ATTENDANCE (daily file)
-# --------------------------------------
 def mark_attendance(name):
     date = datetime.now().strftime("%d-%m-%Y")
-    timestamp = datetime.now().strftime("%H:%M:%S")
+    time = datetime.now().strftime("%H:%M:%S")
 
-    file_path = f"{ATTENDANCE_DIR}/Attendance_{date}.csv"
+    file_path = f"{ATT_DIR}/Attendance_{date}.csv"
 
     if not os.path.exists(file_path):
-        pd.DataFrame(columns=["NAME", "TIME"]).to_csv(file_path, index=False)
+        pd.DataFrame(columns=["Name","Time"]).to_csv(file_path, index=False)
 
-    df = pd.DataFrame([[name, timestamp]], columns=["NAME", "TIME"])
+    df = pd.DataFrame([[name, time]], columns=["Name","Time"])
     df.to_csv(file_path, mode="a", header=False, index=False)
-
-    # Sound alert
-    winsound.Beep(1000, 400)
