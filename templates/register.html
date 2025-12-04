@@ -1,23 +1,27 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>Register User</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="/static/script.js" defer></script>
 </head>
 <body>
 
-<h2>Register New User</h2>
+<div class="container">
+    <h2>Register New User</h2>
 
-<input id="name" placeholder="Enter Name"><br><br>
+    <label for="name-input">Name (letters & spaces only)</label>
+    <input type="text" id="name-input" placeholder="Enter full name" required>
 
-<video id="video" autoplay playsinline width="450"></video><br><br>
+    <video id="video-register" autoplay playsinline></video>
 
-<button onclick="registerUser()">Register</button>
-<p id="msg"></p>
+    <button id="register-btn" class="btn">Capture & Register</button>
 
-<br>
-<a href="/">Back</a>
+    <p id="register-msg"></p>
+
+    <a href="/" class="back-btn">⬅ Back to Home</a>
+</div>
 
 </body>
 </html>

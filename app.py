@@ -1,67 +1,162 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 import cv2
 import numpy as np
 import base64
 import os
+import pandas as pd
+
 from utils import (
-    register_user, recognize_face, mark_attendance,
-    retrain, delete_user
+    register_user,
+    recognize_face,
+    mark_attendance,
+    retrain,
+    delete_user,
+    get_registered_users,
+    ATT_DIR,
 )
 
 app = Flask(__name__)
+app.secret_key = "super-secret-key-change-this"
+
+
+# ------------------ ROUTES: PAGES ------------------ #
 
 @app.route("/")
 def home():
     return render_template("index.html")
 
+
 @app.route("/register")
 def register_page():
     return render_template("register.html")
 
-@app.route("/admin")
+
+@app.route("/admin-login", methods=["GET", "POST"])
 def admin_login():
-    return render_template("admin_login.html")
+    msg = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
 
-@app.route("/dashboard")
-def dashboard():
-    users = sorted(os.listdir("data/user_images/"))
-    return render_template("admin_dashboard.html", users=users)
+        if username == "admin" and password == "1234":
+            session["admin"] = True
+            return redirect(url_for("admin_dashboard"))
+        else:
+            msg = "Invalid credentials."
 
-# Recognize API
+    return render_template("admin_login.html", message=msg)
+
+
+@app.route("/admin")
+def admin_dashboard():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
+
+    users = get_registered_users()
+
+    # Build attendance list from all CSVs
+    attendance_records = []
+    if os.path.exists(ATT_DIR):
+        for fname in sorted(os.listdir(ATT_DIR)):
+            if fname.startswith("Attendance_") and fname.endswith(".csv"):
+                date_str = fname.replace("Attendance_", "").replace(".csv", "")
+                fpath = os.path.join(ATT_DIR, fname)
+                try:
+                    df = pd.read_csv(fpath)
+                    for _, row in df.iterrows():
+                        attendance_records.append(
+                            {
+                                "date": date_str,
+                                "name": row.get("Name", ""),
+                                "time": row.get("Time", ""),
+                            }
+                        )
+                except Exception:
+                    continue
+
+    return render_template(
+        "admin_dashboard.html",
+        users=users,
+        attendance=attendance_records
+    )
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("home"))
+
+
+# ------------------ API: RECOGNITION ------------------ #
+
 @app.route("/api/recognize", methods=["POST"])
 def api_recognize():
-    data = request.json["image"]
-    img_bytes = base64.b64decode(data.split(",")[1])
+    data = request.json
+    img_data = data.get("image", "")
+
+    if "," in img_data:
+        img_data = img_data.split(",")[1]
+
+    img_bytes = base64.b64decode(img_data)
     frame = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
 
-    frame, name, box = recognize_face(frame)
+    name = recognize_face(frame)
+
     if name not in ["Unknown", "NO USERS"]:
         mark_attendance(name)
 
     return jsonify({"name": name})
 
-# Register API
+
+# ------------------ API: REGISTRATION ------------------ #
+
 @app.route("/api/register", methods=["POST"])
 def api_register():
-    name = request.form["name"]
-    img_data = request.form["image"]
+    name = request.form.get("name", "").strip()
+    img_data = request.form.get("image", "")
 
-    img_bytes = base64.b64decode(img_data.split(",")[1])
+    # Basic validation: letters and spaces only
+    if not name or not all(c.isalpha() or c.isspace() for c in name):
+        return jsonify({"success": False, "message": "Name must contain only letters and spaces."})
+
+    if "," in img_data:
+        img_data = img_data.split(",")[1]
+
+    img_bytes = base64.b64decode(img_data)
     img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
 
-    success = register_user(name, img)
-    return jsonify({"success": success})
+    if img is None:
+        return jsonify({"success": False, "message": "Invalid image."})
 
-# Delete User
-@app.route("/api/delete", methods=["POST"])
-def api_delete():
-    name = request.form["name"]
-    return jsonify({"success": delete_user(name)})
+    ok = register_user(name, img)
+    if not ok:
+        return jsonify({"success": False, "message": "No face detected. Try again with clearer photo."})
 
-# Retrain
+    return jsonify({"success": True, "message": f"User '{name}' registered successfully!"})
+
+
+# ------------------ (Optional) Admin Actions API ------------------ #
+
+@app.route("/api/delete-user", methods=["POST"])
+def api_delete_user():
+    if not session.get("admin"):
+        return jsonify({"success": False, "message": "Not authorized"})
+
+    name = request.form.get("name", "").strip()
+    if not name:
+        return jsonify({"success": False, "message": "No name provided"})
+
+    ok = delete_user(name)
+    return jsonify({"success": ok})
+
+
 @app.route("/api/retrain", methods=["POST"])
 def api_retrain():
+    if not session.get("admin"):
+        return jsonify({"success": False, "message": "Not authorized"})
     retrain()
     return jsonify({"success": True})
 
-app.run(debug=True)
+
+if __name__ == "__main__":
+    app.run(debug=True)
