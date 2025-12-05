@@ -1,16 +1,10 @@
-import face_recognition
-import os
-import pickle
-import cv2
-import numpy as np
-import pandas as pd
+import face_recognition, os, pickle, cv2, numpy as np, pandas as pd, shutil
 from datetime import datetime
-import shutil
 
 ENCODING_FILE = "data/encodings.pkl"
 IMAGE_DIR = "data/user_images"
 ATT_DIR = "Attendance"
-THRESHOLD = 0.45  # lower = stricter match
+THRESHOLD = 0.45
 
 def ensure_dirs():
     os.makedirs("data", exist_ok=True)
@@ -22,129 +16,80 @@ ensure_dirs()
 def load_encodings():
     if os.path.exists(ENCODING_FILE):
         try:
-            with open(ENCODING_FILE, "rb") as f:
-                return pickle.load(f)
-        except Exception:
+            return pickle.load(open(ENCODING_FILE, "rb"))
+        except:
             pass
     return {"encodings": [], "names": []}
 
 def save_encodings(data):
-    with open(ENCODING_FILE, "wb") as f:
-        pickle.dump(data, f)
+    pickle.dump(data, open(ENCODING_FILE, "wb"))
 
 def retrain():
-    """Rebuild encodings from all stored user images."""
-    encodings = []
-    names = []
-
-    if not os.path.exists(IMAGE_DIR):
-        save_encodings({"encodings": [], "names": []})
-        return True
-
+    encs, names = [], []
     for user in os.listdir(IMAGE_DIR):
-        user_folder = os.path.join(IMAGE_DIR, user)
-        if not os.path.isdir(user_folder):
+        folder = os.path.join(IMAGE_DIR, user)
+        if not os.path.isdir(folder):
             continue
-
-        for img_name in os.listdir(user_folder):
-            img_path = os.path.join(user_folder, img_name)
-            img = cv2.imread(img_path)
+        for img_name in os.listdir(folder):
+            img = cv2.imread(os.path.join(folder, img_name))
             if img is None:
                 continue
-
             rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             boxes = face_recognition.face_locations(rgb, model="hog")
-            encs = face_recognition.face_encodings(rgb, boxes)
-            if len(encs) > 0:
-                encodings.append(encs[0])
+            enc = face_recognition.face_encodings(rgb, boxes)
+            if len(enc)>0:
+                encs.append(enc[0])
                 names.append(user)
+    save_encodings({"encodings": encs, "names": names})
 
-    save_encodings({"encodings": encodings, "names": names})
-    return True
-
-def register_user(name: str, img_bgr) -> bool:
-    """
-    Save user's image & update encodings.
-    Returns True on success, False if no face found.
-    """
+def register_user(name, img):
     ensure_dirs()
-    user_folder = os.path.join(IMAGE_DIR, name)
-    os.makedirs(user_folder, exist_ok=True)
-
-    count = len(os.listdir(user_folder)) + 1
-    img_path = os.path.join(user_folder, f"img_{count}.jpg")
-    cv2.imwrite(img_path, img_bgr)
-
-    # Check face is there
-    rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    folder = os.path.join(IMAGE_DIR, name)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"img_{len(os.listdir(folder))+1}.jpg")
+    cv2.imwrite(path, img)
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     boxes = face_recognition.face_locations(rgb, model="hog")
-    encs = face_recognition.face_encodings(rgb, boxes)
-    if len(encs) == 0:
-        # remove the saved image if no face
-        os.remove(img_path)
+    enc = face_recognition.face_encodings(rgb, boxes)
+    if len(enc)==0:
+        os.remove(path)
         return False
-
     retrain()
     return True
 
-def delete_user(name: str) -> bool:
-    user_folder = os.path.join(IMAGE_DIR, name)
-    if os.path.exists(user_folder):
-        shutil.rmtree(user_folder)
+def delete_user(name):
+    folder = os.path.join(IMAGE_DIR, name)
+    if os.path.exists(folder):
+        shutil.rmtree(folder)
         retrain()
         return True
     return False
 
-def recognize_face(frame_bgr):
-    """
-    Given a BGR frame, return (best_name).
-    """
+def recognize_face(frame):
     data = load_encodings()
-    known_encs = data["encodings"]
-    known_names = data["names"]
-
-    if len(known_encs) == 0:
+    if len(data["encodings"])==0:
         return "NO USERS"
-
-    rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     boxes = face_recognition.face_locations(rgb, model="hog")
-    encodings = face_recognition.face_encodings(rgb, boxes)
-
-    if len(encodings) == 0:
+    encs = face_recognition.face_encodings(rgb, boxes)
+    if len(encs)==0:
         return "Unknown"
+    for enc in encs:
+        dist = face_recognition.face_distance(data["encodings"], enc)
+        i = np.argmin(dist)
+        if dist[i]<THRESHOLD:
+            return data["names"][i]
+    return "Unknown"
 
-    best_name = "Unknown"
-    for enc in encodings:
-        distances = face_recognition.face_distance(known_encs, enc)
-        idx = np.argmin(distances)
-        if distances[idx] < THRESHOLD:
-            best_name = known_names[idx]
-
-    return best_name
-
-def mark_attendance(name: str):
-    """
-    Append attendance to Attendance/Attendance_dd-mm-YYYY.csv
-    """
+def mark_attendance(name):
     ensure_dirs()
-    date_str = datetime.now().strftime("%d-%m-%Y")
-    time_str = datetime.now().strftime("%H:%M:%S")
-    file_path = os.path.join(ATT_DIR, f"Attendance_{date_str}.csv")
-
-    if not os.path.exists(file_path):
-        pd.DataFrame(columns=["Name", "Time"]).to_csv(file_path, index=False)
-
-    df = pd.DataFrame([[name, time_str]], columns=["Name", "Time"])
-    df.to_csv(file_path, mode="a", header=False, index=False)
+    date = datetime.now().strftime("%d-%m-%Y")
+    time = datetime.now().strftime("%H:%M:%S")
+    file = os.path.join(ATT_DIR, f"Attendance_{date}.csv")
+    if not os.path.exists(file):
+        pd.DataFrame(columns=["Name","Time"]).to_csv(file, index=False)
+    pd.DataFrame([[name,time]], columns=["Name","Time"]).to_csv(file, mode="a", header=False, index=False)
 
 def get_registered_users():
-    """
-    Returns list of registered user names (folder names).
-    """
-    ensure_dirs()
-    users = []
-    for entry in os.listdir(IMAGE_DIR):
-        full = os.path.join(IMAGE_DIR, entry)
-        if os.path.isdir(full):
-            users.append(entry)
-    return sorted(users)
+    return sorted([u for u in os.listdir(IMAGE_DIR) if os.path.isdir(os.path.join(IMAGE_DIR,u))])
+a
