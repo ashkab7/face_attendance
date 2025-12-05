@@ -92,4 +92,3 @@ def mark_attendance(name):
 
 def get_registered_users():
     return sorted([u for u in os.listdir(IMAGE_DIR) if os.path.isdir(os.path.join(IMAGE_DIR,u))])
-a
