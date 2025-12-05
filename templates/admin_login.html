@@ -1,32 +1,15 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Admin Login</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Admin Login</title>
+<link rel="stylesheet" href="/static/style.css"></head>
 <body>
-
 <div class="container">
-    <h2>Admin Login</h2>
-
-    {% if message %}
-        <div class="alert error">{{ message }}</div>
-    {% endif %}
-
-    <form method="POST" autocomplete="off">
-
-        <label>Username</label>
-        <input type="text" name="username" placeholder="Enter username" required autocomplete="off">
-
-        <label>Password</label>
-        <input type="password" name="password" placeholder="Enter password" required autocomplete="new-password">
-
-        <button type="submit" class="btn">Login</button>
-    </form>
-
-    <a href="/" class="back-btn">⬅ Back to Home</a>
-</div>
-
-</body>
-</html>
+<h2>Admin Login</h2>
+{% if message %}<div class="alert error">{{ message }}</div>{% endif %}
+<form method="POST">
+<label>Username</label>
+<input type="text" name="username" required>
+<label>Password</label>
+<input type="password" name="password" required>
+<button class="btn" type="submit">Login</button>
+</form>
+<a href="/" class="back-btn">Back</a>
+</div></body></html>

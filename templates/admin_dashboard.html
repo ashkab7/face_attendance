@@ -1,49 +1,26 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Admin Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Admin Dashboard</title>
+<link rel="stylesheet" href="/static/style.css"><script src="/static/script.js" defer></script></head>
 <body>
-
 <div class="container">
-    <h2>Admin Dashboard</h2>
-
-    <h3>Registered Users</h3>
-    {% if users %}
-        <ul>
-            {% for user in users %}
-                <li>{{ user }}</li>
-            {% endfor %}
-        </ul>
-    {% else %}
-        <p>No users registered yet.</p>
-    {% endif %}
-
-    <h3>Attendance Records</h3>
-    {% if attendance %}
-        <table>
-            <tr>
-                <th>Date</th>
-                <th>Name</th>
-                <th>Time</th>
-            </tr>
-            {% for row in attendance %}
-                <tr>
-                    <td>{{ row.date }}</td>
-                    <td>{{ row.name }}</td>
-                    <td>{{ row.time }}</td>
-                </tr>
-            {% endfor %}
-        </table>
-    {% else %}
-        <p>No attendance records yet.</p>
-    {% endif %}
-
-    <a href="/logout" class="back-btn">Logout</a>
-    <a href="/" class="back-btn">⬅ Back to Home</a>
-</div>
-
-</body>
-</html>
+<h2>Admin Dashboard</h2>
+<h3>Registered Users</h3>
+{% if users %}
+<table>
+<tr><th>Name</th><th>Action</th></tr>
+{% for u in users %}
+<tr><td>{{ u }}</td>
+<td><button class="btn" style="background:#ff3b30" onclick="deleteUser('{{ u }}')">Delete</button></td></tr>
+{% endfor %}
+</table>
+{% else %}<p>No users found.</p>{% endif %}
+<h3>Attendance</h3>
+{% if attendance %}
+<table>
+<tr><th>Date</th><th>Name</th><th>Time</th></tr>
+{% for r in attendance %}
+<tr><td>{{ r.date }}</td><td>{{ r.name }}</td><td>{{ r.time }}</td></tr>
+{% endfor %}
+</table>
+{% else %}<p>No attendance records.</p>{% endif %}
+<a href="/logout" class="back-btn">Logout</a>
+</div></body></html>
